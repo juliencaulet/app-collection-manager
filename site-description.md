@@ -6,6 +6,187 @@ A modern application for managing two main types of collections:
 2. Video: Movies (DVDs/Blu-rays) and TV series
 The application provides a unified platform for cataloging, organizing, and tracking these collections across web and mobile platforms, with dedicated views for each collection type. Each user has their own private collection space.
 
+## Project Structure
+- `/backend` - Python FastAPI backend
+  - `/api` - API routes and endpoints
+  - `/core` - Core business logic
+  - `/models` - Data models and schemas
+  - `/services` - Business services and external integrations
+  - `/utils` - Utility functions and helpers
+  - `/tests` - Backend tests
+  - `requirements.txt` - Python dependencies
+  - `config.py` - Configuration settings
+
+- `/frontend` - React/React Native frontend
+  - `/web` - Web application (React)
+  - `/mobile` - Mobile application (React Native)
+  - `/shared` - Shared components and utilities
+  - `/assets` - Static assets
+  - `/tests` - Frontend tests
+  - `package.json` - Node.js dependencies
+
+- `/database` - MongoDB configuration and scripts
+  - `/scripts` - Database setup and maintenance scripts
+  - `/models` - Database models and schemas
+  - `/indexes` - Database indexes configuration
+  - `mongodb-setup.md` - Local MongoDB installation and configuration guide
+
+- `/docs` - Project documentation
+  - `/api` - API documentation
+  - `/architecture` - Architecture diagrams and decisions
+  - `/setup` - Setup and deployment guides
+    - `/backend` - Backend setup and configuration
+    - `/frontend` - Frontend setup and configuration
+    - `/database` - Database setup and configuration
+    - `/development` - Development environment setup
+
+- `/scripts` - Utility scripts
+  - `/deployment` - Deployment scripts
+  - `/maintenance` - Maintenance and backup scripts
+
+## Development Approach
+The development will follow an incremental, feature-by-feature approach with high modularity:
+
+### Incremental Development
+- Start with a minimal viable product (MVP) for each feature
+- Implement features in small, manageable increments
+- Regular testing and validation at each step
+- Continuous integration of new features
+- Progressive enhancement of existing features
+
+### Feature Implementation Order
+1. Core Infrastructure
+   - Basic project structure setup
+   - Development environment configuration
+   - Database setup and basic models
+   - Authentication system
+
+2. Basic Collection Management
+   - User authentication and profile management
+   - Basic CRUD operations for collections
+   - Simple item management
+   - Basic search functionality
+
+3. Enhanced Features
+   - Advanced search and filtering
+   - Image handling and optimization
+   - External data integration (Bubble BD, IMDb)
+   - Hierarchical organization (series, seasons, collections)
+
+4. Advanced Features
+   - Statistics and insights
+   - Advanced filtering and sorting
+   - Batch operations
+   - Performance optimizations
+
+### Modular Development
+- Each feature developed as an independent module
+- Clear interfaces between modules
+- Reusable components and utilities
+- Isolated testing for each module
+- Easy integration of new features
+- Simplified maintenance and updates
+
+### Code Organization
+- Feature-based directory structure
+- Clear separation of concerns
+- Independent module testing
+- Documentation for each module
+- Version control for feature branches
+
+### Dependency Management
+- Minimal dependency approach for a clean and maintainable codebase
+- Start with only essential core dependencies:
+  - FastAPI for the web framework
+  - Uvicorn for the ASGI server
+  - Motor for MongoDB async operations
+  - Pydantic for data validation
+- Incremental dependency installation following the TODO list
+- Add dependencies only when needed for specific feature implementation
+- Document new dependencies and their purpose in requirements.txt
+- Regular dependency updates and security audits
+- Clear version pinning for stability
+- Avoid unnecessary dependencies to reduce:
+  - Project complexity
+  - Security vulnerabilities
+  - Build time
+  - Deployment size
+  - Potential conflicts
+
+## Development Requirements
+- Python 3.8+ with virtual environment
+- Node.js 16+ and npm/yarn
+- MongoDB Community Edition (local installation)
+- React and React Native development tools
+- Git for version control
+
+## Development Documentation
+Each tier of the application requires detailed setup and configuration documentation:
+
+### Backend Documentation (`/docs/setup/backend/`)
+- Python environment setup
+  - Virtual environment creation and activation
+  - Dependencies installation
+  - Environment variables configuration
+- FastAPI application setup
+  - Application structure explanation
+  - API routes documentation
+  - Middleware configuration
+  - Error handling setup
+- Development workflow
+  - Running the development server
+  - Testing procedures
+  - Debugging guidelines
+  - Code style and standards
+
+### Frontend Documentation (`/docs/setup/frontend/`)
+- Web Application (React)
+  - Project setup and initialization
+  - Dependencies installation
+  - Development server configuration
+  - Build process
+  - Testing setup
+- Mobile Application (React Native)
+  - Development environment setup
+  - iOS and Android configuration
+  - Emulator/simulator setup
+  - Build and deployment process
+- Shared Components
+  - Component library setup
+  - Style guide
+  - Testing procedures
+
+### Database Documentation (`/docs/setup/database/`)
+- MongoDB Installation
+  - Local installation guide
+  - Configuration settings
+  - Security setup
+- Database Setup
+  - Initial database creation
+  - User and role configuration
+  - Index setup
+  - Backup procedures
+- Development Guidelines
+  - Data modeling standards
+  - Query optimization
+  - Migration procedures
+  - Testing data setup
+
+### Development Environment (`/docs/setup/development/`)
+- Environment Configuration
+  - Environment variables setup
+    - Backend environment variables
+    - Frontend environment variables
+    - Database connection settings
+  - Local development settings
+    - Development vs production configurations
+    - Local API endpoints
+    - Local database settings
+  - API keys and secrets management
+    - OAuth provider credentials
+    - External service API keys
+    - Secure storage of sensitive data
+
 ## Core Features
 - User Authentication:
   - Email/password login
@@ -49,8 +230,11 @@ The application provides a unified platform for cataloging, organizing, and trac
 - JWT for authentication state management
 
 ### Backend
-- Node.js with Express/Fastify for API development
-- TypeScript for consistent type safety across the stack
+- Python with FastAPI for high-performance API development
+  - Virtual environment for dependency isolation and management
+  - Requirements.txt for package version control
+  - Development and production environment configurations
+- Type hints and Pydantic for type safety and data validation
 - RESTful API architecture with standardized endpoints:
   - Collection-specific endpoints for each media type
   - CRUD operations for collection items
@@ -81,6 +265,16 @@ The application provides a unified platform for cataloging, organizing, and trac
 
 ### Database
 - MongoDB for flexible document storage:
+  - Collection naming convention:
+    - Prefix: `acm_` (App Collection Manager)
+    - Collections:
+      - `acm_users` - User profiles and authentication data
+      - `acm_books` - Individual book entries
+      - `acm_book_series` - Book series information
+      - `acm_movies` - Individual movie entries
+      - `acm_movie_collections` - Movie collection information
+      - `acm_tv_shows` - TV show information
+      - `acm_tv_seasons` - TV show season information
   - Collection metadata and details
   - Item information and relationships
   - File paths for stored images
@@ -94,7 +288,7 @@ The application provides a unified platform for cataloging, organizing, and trac
     - Book Series: Parent items with series metadata and cover image
   - User profiles and authentication data
   - User-specific collection data
-- Mongoose for object modeling and validation
+- Motor for async MongoDB operations
 
 ## Design Considerations
 - UI/UX: 

@@ -1,4 +1,30 @@
-# macOS system files
+# Python-related
+venv/
+__pycache__/
+*.py[cod]
+*.so
+.env
+.python-version
+
+# Node.js/React/React Native-related
+node_modules/
+build/
+dist/
+.next/
+.expo/
+*.log
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE-related
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System-related
 .DS_Store
 .AppleDouble
 .LSOverride
@@ -23,4 +49,12 @@ Icon
 .AppleDesktop
 Network Trash Folder
 Temporary Items
-.apdisk 
+.apdisk
+
+# Database-related
+data/
+mongod.log
+
+# Media files
+uploads/
+images/ 
