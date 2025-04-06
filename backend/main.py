@@ -1,9 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+from motor.motor_asyncio import AsyncIOMotorClient
+import sys
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = str(Path(__file__).parent.parent)
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 from core.config import get_settings, EnvironmentType
 from core.errors import CollectionManagerError
+from core.database import database
+from core.database_init import initialize_database
+from api.users import router as users_router
 
 # Get module-specific logger
 logger = logging.getLogger(__name__)
@@ -35,6 +46,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include routers
+app.include_router(users_router)
+
+@app.on_event("startup")
+async def startup_db_client():
+    """Connect to MongoDB and initialize database on startup."""
+    try:
+        await database.connect()
+        # Initialize database with collections and indexes
+        await initialize_database(database.db)
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_db_client():
+    """Close MongoDB connection on shutdown."""
+    try:
+        await database.close()
+    except Exception as e:
+        logger.error(f"Error closing MongoDB connection: {str(e)}")
+
 # Root endpoint
 @app.get("/")
 async def root():
@@ -43,7 +76,13 @@ async def root():
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    try:
+        # Test MongoDB connection
+        await database.db.command('ping')
+        return {"status": "healthy", "mongodb": "connected"}
+    except Exception as e:
+        logger.error(f"Health check failed: {str(e)}")
+        return {"status": "unhealthy", "mongodb": "disconnected"}
 
 # Settings endpoint
 @app.get("/settings")

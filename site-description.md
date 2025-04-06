@@ -1,5 +1,78 @@
 # App Collection Manager
 
+A comprehensive application for managing collections of books, movies, and TV shows. Built with modern web technologies and following best practices for maintainable and scalable code.
+
+## Key Features
+
+- User authentication and authorization
+- Collection management for books, movies, and TV shows
+- Series and season tracking
+- Integration with external data sources (IMDb)
+- Responsive and intuitive user interface
+
+## Technical Stack
+
+### Backend
+- FastAPI (Python) for the API server
+- MongoDB for data storage
+- Motor for async MongoDB operations
+- Pydantic for data validation
+- JWT for authentication
+
+### Frontend
+- React with TypeScript
+- Tailwind CSS for styling
+- Modern component architecture
+
+## Development Principles
+
+### Code Organization
+- Modular architecture
+- Clear separation of concerns
+- Well-defined interfaces
+- Comprehensive documentation
+
+### Maintainability
+- DRY (Don't Repeat Yourself) methodology:
+  - Centralized common functionality
+  - Code reuse through inheritance and composition
+  - Single source of truth for configurations
+  - Shared utilities for common operations
+  - Dedicated services for business logic
+- Consistent coding standards
+- Automated testing
+- Type safety
+
+### Scalability
+- Async operations
+- Efficient database queries
+- Caching strategies
+- Load balancing support
+
+## Project Structure
+
+```
+app-collection-manager/
+├── backend/
+│   ├── api/          # API routes and endpoints
+│   ├── core/         # Core business logic
+│   ├── models/       # Data models and schemas
+│   ├── services/     # Business services
+│   ├── utils/        # Utility functions
+│   └── tests/        # Backend tests
+└── frontend/
+    ├── src/
+    │   ├── components/  # React components
+    │   ├── pages/       # Page components
+    │   ├── services/    # API services
+    │   └── utils/       # Utility functions
+    └── tests/           # Frontend tests
+```
+
+## Getting Started
+
+See the TODO.md file for detailed development plan and progress tracking.
+
 ## Project Overview
 A modern application for managing two main types of collections:
 1. Books: Bande Dessinées (French/European comic books)
@@ -337,6 +410,95 @@ Each tier of the application requires detailed setup and configuration documenta
 - How to efficiently manage and display TV show season hierarchies?
 - How to efficiently manage and display movie collection hierarchies?
 - How to efficiently manage and display book series hierarchies?
+
+## Notes
+[Any additional thoughts or considerations]
+
+## Coding Guidelines and Best Practices
+
+### General Principles
+- Follow DRY (Don't Repeat Yourself) methodology
+- Write clean, maintainable, and well-documented code
+- Use meaningful variable and function names
+- Keep functions small and focused on a single responsibility
+- Write self-documenting code with clear intent
+
+### Code Organization
+- Follow the established project structure
+- Keep related code together
+- Separate concerns appropriately
+- Use appropriate design patterns
+- Maintain clear module boundaries
+
+### Documentation
+- Document all public APIs and interfaces
+- Include docstrings for all functions and classes
+- Keep comments up-to-date with code changes
+- Document complex algorithms and business logic
+- Maintain clear README files for each module
+
+### Testing
+- Write unit tests for all new features
+- Maintain high test coverage
+- Test edge cases and error conditions
+- Use meaningful test descriptions
+- Keep tests independent and isolated
+
+### Error Handling
+- Use appropriate error types
+- Provide meaningful error messages
+- Handle errors at the appropriate level
+- Log errors with sufficient context
+- Implement graceful degradation
+
+### Performance
+- Optimize database queries
+- Use appropriate data structures
+- Implement caching where beneficial
+- Monitor and profile performance
+- Address performance bottlenecks
+
+### Security
+- Follow security best practices
+- Validate all input data
+- Use parameterized queries
+- Implement proper authentication
+- Follow the principle of least privilege
+
+### Version Control
+- Write clear commit messages
+- Use meaningful branch names
+- Keep commits focused and atomic
+- Review code before merging
+- Maintain a clean git history
+
+### Code Style
+- Follow PEP 8 for Python code
+- Use consistent formatting
+- Follow established naming conventions
+- Use type hints where appropriate
+- Keep line length within limits
+
+### Database
+- Use appropriate indexes
+- Follow MongoDB best practices
+- Implement proper data validation
+- Use transactions where needed
+- Maintain data consistency
+
+### API Design
+- Follow RESTful principles
+- Use appropriate HTTP methods
+- Implement proper versioning
+- Provide clear error responses
+- Document API endpoints
+
+### Frontend
+- Follow React best practices
+- Use functional components
+- Implement proper state management
+- Follow accessibility guidelines
+- Optimize for performance
 
 ## Notes
 [Any additional thoughts or considerations] 

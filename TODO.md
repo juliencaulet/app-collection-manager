@@ -10,38 +10,44 @@
     - Uvicorn
     - Motor (MongoDB async driver)
     - Pydantic (data validation)
+    - Email-validator
   - [x] Install dependencies
   - [x] Update pip in venv
-- [ ] Set up basic FastAPI application structure
-  - [ ] Create main application file (main.py)
-  - [ ] Set up basic directory structure:
-    - [ ] /api - API routes and endpoints
-    - [ ] /core - Core business logic
-    - [ ] /models - Data models and schemas
-    - [ ] /services - Business services
-    - [ ] /utils - Utility functions
-    - [ ] /tests - Backend tests
-  - [ ] Configure CORS middleware
-  - [ ] Set up basic error handling
-  - [ ] Configure logging
-- [ ] Create environment configuration
-  - [ ] Set up .env file template
-  - [ ] Configure development settings
-  - [ ] Set up MongoDB connection settings
+- [x] Set up basic FastAPI application structure
+  - [x] Create main application file (main.py)
+  - [x] Set up basic directory structure:
+    - [x] /api - API routes and endpoints
+    - [x] /core - Core business logic
+    - [x] /models - Data models and schemas
+    - [x] /services - Business services
+    - [x] /utils - Utility functions
+    - [x] /tests - Backend tests
+  - [x] Configure CORS middleware
+  - [x] Set up basic error handling
+  - [x] Configure logging
+- [x] Create environment configuration
+  - [x] Set up .env file template
+  - [x] Configure development settings
+  - [x] Set up MongoDB connection settings
 
 ### Database Setup
-- [ ] Initialize MongoDB database
-  - [ ] Create database with proper name
-  - [ ] Set up initial collections with acm_ prefix:
-    - [ ] acm_users
-    - [ ] acm_books
-    - [ ] acm_book_series
-    - [ ] acm_movies
-    - [ ] acm_movie_collections
-    - [ ] acm_tv_shows
-    - [ ] acm_tv_seasons
-  - [ ] Create basic indexes
-  - [ ] Set up initial data models
+- [x] Initialize MongoDB database
+  - [x] Create database with proper name
+  - [x] Set up initial collections with acm_ prefix:
+    - [x] acm_users
+    - [x] acm_books
+    - [x] acm_book_series
+    - [x] acm_movies
+    - [x] acm_movie_collections
+    - [x] acm_tv_shows
+    - [x] acm_tv_seasons
+  - [x] Create basic indexes
+- [x] Set up initial data models
+  - [x] Base model with common fields
+  - [x] User model with authentication
+  - [x] Book and BookSeries models
+  - [x] Movie and MovieCollection models
+  - [x] TVShow and TVSeason models
 
 ### Frontend Setup
 - [ ] Initialize React project
@@ -77,4 +83,10 @@
 - Implement features incrementally
 - Maintain clear separation of concerns
 - Document all major changes
-- Follow naming conventions strictly 
+- Follow naming conventions strictly
+- Adhere to DRY (Don't Repeat Yourself) methodology:
+  - Centralize common functionality
+  - Reuse code through inheritance and composition
+  - Maintain single source of truth for configurations
+  - Use shared utilities for common operations
+  - Keep business logic in dedicated services 
