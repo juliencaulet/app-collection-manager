@@ -13,8 +13,9 @@ if str(backend_dir) not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.routes import books, movies, book_series, movie_collections, users
-from config.environment import get_debug, get_cors_origins, get_environment
+from config.environment import get_debug, get_cors_origins, get_environment, logger
+from core.database import get_database
+from api.routes import users, books, book_series, movies, movie_collections
 
 app = FastAPI(
     title=f"App Collection Manager API ({get_environment().title()})",
@@ -41,4 +42,32 @@ app.include_router(movie_collections.router)
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to App Collection Manager API"} 
+    return {"message": "Welcome to App Collection Manager API"}
+
+@app.on_event("startup")
+async def startup_event():
+    """Perform startup tasks."""
+    try:
+        # Test database connection
+        db = get_database()
+        # Use admin command to test connection
+        await db.command('ping')
+        logger.info("Database connection successful")
+        
+        # Get collections and database info
+        collections = await db.list_collection_names()
+        logger.info(f"Database: {db.name}")
+        logger.info(f"Collections: {', '.join(collections)}")
+    except Exception as e:
+        logger.error(f"Failed to connect to database: {str(e)}")
+        raise
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Perform shutdown tasks."""
+    try:
+        db = get_database()
+        db.client.close()
+        logger.info("Database connection closed")
+    except Exception as e:
+        logger.error(f"Error closing database connection: {str(e)}") 
