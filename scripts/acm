@@ -1,0 +1,239 @@
+#!/bin/bash
+
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+BACKEND_DIR="$PROJECT_ROOT/backend"
+FRONTEND_DIR="$PROJECT_ROOT/frontend"
+
+# Function to show usage
+show_usage() {
+    echo "Usage: acm <command> [component]"
+    echo "Commands:"
+    echo "  start    - Start the specified component(s)"
+    echo "  stop     - Stop the specified component(s)"
+    echo "  check    - Check the status of the specified component(s)"
+    echo "Components:"
+    echo "  all      - All components (default)"
+    echo "  backend  - Backend only"
+    echo "  frontend - Frontend only"
+    echo "  database - Database only"
+    echo ""
+    echo "Examples:"
+    echo "  acm start              # Start all components"
+    echo "  acm stop frontend      # Stop frontend only"
+    echo "  acm check database     # Check database status"
+}
+
+# Function to check component status
+check_component() {
+    local component=$1
+    
+    case "$component" in
+        "backend")
+            if pgrep -f "uvicorn main:app" > /dev/null; then
+                echo "Backend is running"
+                return 0
+            else
+                echo "Backend is not running"
+                return 1
+            fi
+            ;;
+        "frontend")
+            if pgrep -f "npm run dev" > /dev/null; then
+                echo "Frontend is running"
+                return 0
+            else
+                echo "Frontend is not running"
+                return 1
+            fi
+            ;;
+        "database")
+            if brew services list | grep mongodb-community | grep started > /dev/null; then
+                echo "Database is running"
+                return 0
+            else
+                echo "Database is not running"
+                return 1
+            fi
+            ;;
+    esac
+}
+
+# Function to start a component
+start_component() {
+    local component=$1
+    
+    case "$component" in
+        "backend")
+            if pgrep -f "uvicorn main:app" > /dev/null; then
+                echo "Backend is already running"
+                return 0
+            fi
+            
+            echo "Starting backend..."
+            cd "$BACKEND_DIR" || return 1
+            
+            # Activate virtual environment
+            if [ -d "$BACKEND_DIR/venv" ]; then
+                source "$BACKEND_DIR/venv/bin/activate"
+            elif [ -d "$BACKEND_DIR/.venv" ]; then
+                source "$BACKEND_DIR/.venv/bin/activate"
+            else
+                echo "Error: Virtual environment not found in $BACKEND_DIR"
+                return 1
+            fi
+            
+            # Set environment variables
+            export PYTHONPATH=$BACKEND_DIR:$PYTHONPATH
+            
+            # Start the FastAPI application
+            uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
+            echo "Backend started successfully"
+            ;;
+            
+        "frontend")
+            if pgrep -f "npm run dev" > /dev/null; then
+                echo "Frontend is already running"
+                return 0
+            fi
+            
+            echo "Starting frontend..."
+            cd "$FRONTEND_DIR" || return 1
+            npm run dev &
+            echo "Frontend started successfully"
+            ;;
+            
+        "database")
+            if brew services list | grep mongodb-community | grep started > /dev/null; then
+                echo "Database is already running"
+                return 0
+            fi
+            
+            echo "Starting database..."
+            brew services start mongodb-community
+            echo "Database started successfully"
+            ;;
+    esac
+}
+
+# Function to stop a component
+stop_component() {
+    local component=$1
+    
+    case "$component" in
+        "backend")
+            echo "Stopping backend..."
+            pkill -f "uvicorn main:app"
+            if [ $? -eq 0 ]; then
+                echo "Backend stopped successfully"
+            else
+                echo "Backend was not running"
+            fi
+            ;;
+            
+        "frontend")
+            echo "Stopping frontend..."
+            pkill -f "npm run dev"
+            if [ $? -eq 0 ]; then
+                echo "Frontend stopped successfully"
+            else
+                echo "Frontend was not running"
+            fi
+            ;;
+            
+        "database")
+            echo "Stopping database..."
+            brew services stop mongodb-community
+            if [ $? -eq 0 ]; then
+                echo "Database stopped successfully"
+            else
+                echo "Database was not running"
+            fi
+            ;;
+    esac
+}
+
+# Function to handle all components
+handle_all_components() {
+    local command=$1
+    
+    case "$command" in
+        "start")
+            # Start in order: database -> backend -> frontend
+            start_component "database"
+            sleep 2
+            start_component "backend"
+            sleep 2
+            start_component "frontend"
+            ;;
+            
+        "stop")
+            # Stop in order: frontend -> backend -> database
+            stop_component "frontend"
+            stop_component "backend"
+            stop_component "database"
+            ;;
+            
+        "check")
+            echo "Checking all components..."
+            echo "-----------------------------------"
+            check_component "database"
+            echo "-----------------------------------"
+            check_component "backend"
+            echo "-----------------------------------"
+            check_component "frontend"
+            echo "-----------------------------------"
+            ;;
+    esac
+}
+
+# Main script logic
+if [ $# -lt 1 ]; then
+    show_usage
+    exit 1
+fi
+
+COMMAND=$1
+COMPONENT=${2:-"all"}  # Default to "all" if no component specified
+
+# Validate command
+case "$COMMAND" in
+    "start"|"stop"|"check")
+        # Command is valid
+        ;;
+    *)
+        echo "Error: Invalid command '$COMMAND'"
+        show_usage
+        exit 1
+        ;;
+esac
+
+# Validate component
+case "$COMPONENT" in
+    "all"|"backend"|"frontend"|"database")
+        # Component is valid
+        ;;
+    *)
+        echo "Error: Invalid component '$COMPONENT'"
+        show_usage
+        exit 1
+        ;;
+esac
+
+# Execute the command
+if [ "$COMPONENT" = "all" ]; then
+    handle_all_components "$COMMAND"
+else
+    case "$COMMAND" in
+        "start")
+            start_component "$COMPONENT"
+            ;;
+        "stop")
+            stop_component "$COMPONENT"
+            ;;
+        "check")
+            check_component "$COMPONENT"
+            ;;
+    esac
+fi
