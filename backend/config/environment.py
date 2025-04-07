@@ -138,7 +138,7 @@ def load_environment():
     env_file = f".env.{env}"
     
     # First try to load the environment-specific file
-    env_path = Path(__file__).parent.parent / env_file
+    env_path = Path(__file__).parent / env_file
     if env_path.exists():
         load_dotenv(env_path)
         logger.info(f"Loaded environment configuration from {env_file}")
@@ -146,7 +146,8 @@ def load_environment():
         logger.warning(f"Environment file {env_file} not found, using default configuration")
     
     # Then load the base .env file as fallback
-    load_dotenv()
+    base_env_path = Path(__file__).parent / ".env"
+    load_dotenv(base_env_path)
     
     # Ensure ACM_ENVIRONMENT is set to development if not defined
     if not os.getenv("ACM_ENVIRONMENT"):
