@@ -56,20 +56,20 @@ def display_configuration():
         }
     }
     
-    logger.info("Application Configuration:")
+    logger.debug("Application Configuration:")
     for key, value in config.items():
-        logger.info(f"{key}: {value}")
+        logger.debug(f" |_ {key}: {value}")
     
     logger.debug("System Information:")
     for key, value in system_info.items():
-        logger.debug(f"{key}: {value}")
+        logger.debug(f" |_{key}: {value}")
     
     # Log file information
     log_file = get_log_file()
     log_path = Path(log_file)
-    logger.debug(f"Log file path: {log_path.absolute()}")
-    logger.debug(f"Log file exists: {log_path.exists()}")
-    logger.debug(f"Log file size: {log_path.stat().st_size if log_path.exists() else 0} bytes")
+    logger.debug(f" |_ Log file path: {log_path.absolute()}")
+    logger.debug(f" |_ Log file exists: {log_path.exists()}")
+    logger.debug(f" |_ Log file size: {log_path.stat().st_size if log_path.exists() else 0} bytes")
 
 def load_environment():
     """Load the appropriate environment file based on ACM_ENVIRONMENT."""

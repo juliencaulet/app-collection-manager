@@ -48,6 +48,7 @@ async def root():
 async def startup_event():
     """Perform startup tasks."""
     try:
+        logger.info("- STARTUP --------------------------------------------------")
         # Test database connection
         db = get_database()
         # Use admin command to test connection
@@ -66,6 +67,7 @@ async def startup_event():
 async def shutdown_event():
     """Perform shutdown tasks."""
     try:
+        logger.info("- SHUTDOWN --------------------------------------------------")
         db = get_database()
         db.client.close()
         logger.info("Database connection closed")
