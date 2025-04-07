@@ -29,7 +29,7 @@ FRONTEND_DIR="$PROJECT_ROOT/frontend"
 # Log file paths
 BACKEND_LOG="$BACKEND_DIR/logs/uvicorn.log"
 FRONTEND_LOG="$FRONTEND_DIR/logs/npm.log"
-DATABASE_LOG=$(brew services info mongodb-community | grep "Log:" | awk '{print $2}')
+DATABASE_LOG="/opt/homebrew/var/log/mongodb/mongo.log"
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,7 +53,7 @@ show_usage() {
     echo "  start    - Start the specified component(s)"
     echo "  stop     - Stop the specified component(s)"
     echo "  check    - Check the status of the specified component(s)"
-    echo "            For database, can be combined with show: check database show <type>"
+    echo "  show     - Show detailed information about a component"
     echo "  logs     - Show logs for the specified component"
     echo "  help     - Show this help message"
     echo "Components:"
@@ -71,10 +71,10 @@ show_usage() {
     echo "  acm start                            # Start all components in development mode"
     echo "  acm stop frontend                    # Stop frontend only"
     echo "  acm check database                   # Check database process"
-    echo "  acm check database show status       # Show database status"
-    echo "  acm check database show collections  # Show database collections"
-    echo "  acm check database show users        # Show database users"
-    echo "  acm check database show indexes      # Show database indexes"
+    echo "  acm show database status             # Show database status"
+    echo "  acm show database collections        # Show database collections"
+    echo "  acm show database users              # Show database users"
+    echo "  acm show database indexes            # Show database indexes"
     echo "  acm start backend --env-prod         # Start backend in production mode"
     echo "  acm start frontend --env-prod        # Start frontend in production mode"
     echo "  acm logs backend                     # Show backend logs"
@@ -238,24 +238,29 @@ show_database_collections() {
         
         # Get collections from all databases
         mongosh --eval '
-            db.adminCommand("listDatabases").databases.forEach(function(d) {
-                var db = db.getSiblingDB(d.name);
-                var collections = db.getCollectionNames();
-                if (collections.length > 0) {
-                    print("Database: " + d.name);
-                    collections.forEach(function(c) {
-                        var stats = db[c].stats();
-                        print("  Collection: " + c);
-                        print("    Documents: " + stats.count);
-                        print("    Size: " + (stats.size/1024/1024).toFixed(2) + "MB");
-                        print("    Storage Size: " + (stats.storageSize/1024/1024).toFixed(2) + "MB");
-                        print("");
-                    });
-                }
-            });
+            try {
+                const dbs = db.adminCommand("listDatabases").databases;
+                dbs.forEach(function(d) {
+                    const currentDB = db.getSiblingDB(d.name);
+                    const collections = currentDB.getCollectionNames();
+                    if (collections.length > 0) {
+                        print("Database: " + d.name);
+                        collections.forEach(function(c) {
+                            const stats = currentDB[c].stats();
+                            print("  Collection: " + c);
+                            print("    Documents: " + stats.count);
+                            print("    Size: " + (stats.size/1024/1024).toFixed(2) + "MB");
+                            print("    Storage Size: " + (stats.storageSize/1024/1024).toFixed(2) + "MB");
+                            print("");
+                        });
+                    }
+                });
+            } catch (e) {
+                print("Error: " + e.message);
+            }
         ' --quiet
     else
-        echo -e "${GREEN}MongoDB is not accepting connections${NC}"
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
     fi
 }
 
@@ -456,9 +461,9 @@ start_component() {
             
             # Start the FastAPI application
             if [ "$env" = "production" ]; then
-                cd "$BACKEND_DIR" && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 &>/dev/null &
+                cd "$BACKEND_DIR" && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info &>"$BACKEND_LOG" &
             else
-                cd "$BACKEND_DIR" && uvicorn main:app --reload --log-config=None &>"$BACKEND_LOG" &
+                cd "$BACKEND_DIR" && uvicorn main:app --reload --log-level debug &>"$BACKEND_LOG" &
             fi
             
             # Wait for backend to start
@@ -534,7 +539,7 @@ stop_component() {
                 done
                 
                 # Wait for processes to stop
-                sleep 2
+                sleep 4
                 
                 # Check if any processes are still running
                 if pgrep -f "uvicorn main:app" > /dev/null; then
@@ -680,6 +685,53 @@ handle_all_components() {
     esac
 }
 
+handle_command() {
+    local command=$1
+    local component=${2:-$DEFAULT_COMPONENT}
+    local show_type=$3
+    
+    echo ${command} ${component} ${show_type}
+    case "$command" in
+        "start")
+            if [ "$component" = "all" ]; then
+                handle_all_components "start" "$ENV"
+            else
+                start_component "$component" "$ENV"
+            fi
+            ;;
+        "stop")
+            if [ "$component" = "all" ]; then
+                handle_all_components "stop" "$ENV"
+            else
+                stop_component "$component"
+            fi
+            ;;
+        "check")
+            if [ "$component" = "all" ]; then
+                handle_all_components "check" "$ENV"
+            else
+                check_component "$component"
+            fi
+            ;;
+        "show")
+            if [ "$component" = "database" ]; then
+                if [ -z "$show_type" ]; then
+                    echo -e "${RED}Error: Show type is required for database${NC}"
+                    echo -e "${GREEN}Available types: status, collections, users, indexes${NC}"
+                    exit 1
+                fi
+                show_component "database" "$show_type"
+            else
+                echo -e "${RED}Error: Show command is only supported for database component${NC}"
+                exit 1
+            fi
+            ;;
+        "logs")
+            show_logs "$component" "$@"
+            ;;
+    esac
+}
+
 # =============================================================================
 # MAIN SCRIPT
 # =============================================================================
@@ -694,37 +746,11 @@ fi
 COMMAND=$1
 COMPONENT=${2:-$DEFAULT_COMPONENT}
 ENV=$DEFAULT_ENV
-SHOW_TYPE=""
+SHOW_TYPE=${3:-""}
 
 # Handle help command
 if [ "$COMMAND" = "help" ]; then
     show_usage
-    exit 0
-fi
-
-# Special case for check database show command
-if [ "$COMMAND" = "check" ] && [ "$COMPONENT" = "database" ] && [ "$3" = "show" ]; then
-    SHOW_TYPE=$4
-    if [ -z "$SHOW_TYPE" ]; then
-        echo "Error: Show type is required for database show command"
-        echo "Available types: status, collections, users, indexes"
-        exit 1
-    fi
-    
-    # Validate show type
-    case "$SHOW_TYPE" in
-        "status"|"collections"|"users"|"indexes")
-            # Show type is valid
-            ;;
-        *)
-            echo "Error: Invalid show type '$SHOW_TYPE'"
-            echo "Available types: status, collections, users, indexes"
-            exit 1
-            ;;
-    esac
-    
-    # Execute the show command
-    show_component "database" "$SHOW_TYPE"
     exit 0
 fi
 
@@ -747,7 +773,7 @@ done
 
 # Validate command
 case "$COMMAND" in
-    "start"|"stop"|"check"|"help"|"logs")
+    "start"|"stop"|"check"|"show"|"help"|"logs")
         # Command is valid
         ;;
     *)
@@ -770,25 +796,20 @@ case "$COMPONENT" in
 esac
 
 # Execute the command
-if [ "$COMPONENT" = "all" ]; then
-    handle_all_components "$COMMAND" "$ENV"
-else
-    case "$COMMAND" in
-        "start")
-            start_component "$COMPONENT" "$ENV"
-            ;;
-        "stop")
-            stop_component "$COMPONENT"
-            ;;
-        "check")
-            if [ "$COMPONENT" = "database" ] && [ -n "$SHOW_TYPE" ]; then
-                show_component "$COMPONENT" "$SHOW_TYPE"
-            else
-                check_component "$COMPONENT"
-            fi
-            ;;
-        "logs")
-            show_logs "$COMPONENT" "$@"
-            ;;
-    esac
-fi
+case "$COMMAND" in
+    "start")
+        handle_command "start" "$COMPONENT" "$ENV"
+        ;;
+    "stop")
+        handle_command "stop" "$COMPONENT"
+        ;;
+    "check")
+        handle_command "check" "$COMPONENT"
+        ;;
+    "show")
+        handle_command "show" "$COMPONENT" "$SHOW_TYPE"
+        ;;
+    "logs")
+        handle_command "logs" "$COMPONENT" "$@"
+        ;;
+esac

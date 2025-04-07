@@ -3,6 +3,7 @@ from functools import lru_cache
 import os
 import sys
 import logging
+from pathlib import Path
 from core.constants import (
     COLORS,
     EnvironmentType,
@@ -29,13 +30,57 @@ class AlignedFormatter(logging.Formatter):
         padding = 9 - len(levelname)  # DEBUG is 5 chars, so we need 4 spaces
         return f"{colored_level}{' ' * padding}{record.getMessage()}"
 
-# Setup initial logging with default configuration
-handler = logging.StreamHandler()
-handler.setFormatter(AlignedFormatter())
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[handler]
-)
+class FileFormatter(logging.Formatter):
+    """Formatter for file logging"""
+    
+    def __init__(self):
+        super().__init__('%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+    
+    def format(self, record):
+        return super().format(record)
+
+def setup_logging(environment: EnvironmentType, log_level: str):
+    """Setup logging configuration with both console and file handlers"""
+    # Create logs directory if it doesn't exist
+    logs_dir = Path(__file__).parent.parent / "logs"
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Set up console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(AlignedFormatter())
+    
+    # Set up file handler
+    log_file = logs_dir / f"{environment.value}.log"
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(FileFormatter())
+    
+    # Get numeric log level
+    numeric_level = getattr(logging, log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f"Invalid log level: {log_level}")
+    
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(numeric_level)
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(file_handler)
+    
+    # Configure uvicorn logger
+    uvicorn_logger = logging.getLogger("uvicorn")
+    uvicorn_logger.setLevel(numeric_level)
+    uvicorn_logger.addHandler(console_handler)
+    uvicorn_logger.addHandler(file_handler)
+    
+    # Configure uvicorn access logger
+    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_access_logger.setLevel(numeric_level)
+    uvicorn_access_logger.addHandler(console_handler)
+    uvicorn_access_logger.addHandler(file_handler)
+    
+    # Get module-specific logger
+    logger = logging.getLogger(__name__)
+    logger.info(f"Logging configured with level {log_level}")
+    logger.info(f"Log file: {log_file}")
 
 # Get module-specific logger
 logger = logging.getLogger(__name__)
@@ -48,14 +93,14 @@ def get_environment() -> EnvironmentType:
         # Set the environment file based on the environment
         env_file = f".env.{environment.value}"
         if os.path.exists(env_file):
-            os.environ["ENV_FILE"] = env_file
-            logger.info(f"Using environment file: {env_file}")
+            # Get log level from environment
+            log_level = os.getenv("ACM_LOG_LEVEL", DEFAULT_LOG_LEVEL)
+            # Setup logging with environment-specific configuration
+            setup_logging(environment, log_level)
         return environment
     except ValueError:
-        valid_envs = [e.value for e in EnvironmentType]
-        logger.error(f"Invalid environment '{env}'")
-        logger.info(f"Valid environments are: {', '.join(valid_envs)}")
-        sys.exit(1)
+        logger.warning(f"Invalid environment '{env}', defaulting to {DEFAULT_ENVIRONMENT}")
+        return EnvironmentType(DEFAULT_ENVIRONMENT)
 
 class Settings(BaseSettings):
     # Environment
