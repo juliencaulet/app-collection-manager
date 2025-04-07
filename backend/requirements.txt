@@ -3,4 +3,9 @@ uvicorn
 pydantic
 pydantic-settings
 motor
-python-dotenv 
+python-dotenv
+python-jose[cryptography]
+passlib[bcrypt]
+pymongo
+python-multipart
+email-validator 
