@@ -24,13 +24,13 @@ class UvicornFormatter(logging.Formatter):
         # Format the log level with appropriate color and style
         levelname = record.levelname
         if levelname == "INFO":
-            levelname = f"{GREEN}ℹ {levelname}{RESET}"
+            levelname = f"{GREEN}{levelname}:{RESET}"
         elif levelname == "WARNING":
-            levelname = f"{YELLOW}⚠ {levelname}{RESET}"
+            levelname = f"{YELLOW}{levelname}:{RESET}"
         elif levelname == "ERROR":
-            levelname = f"{RED}✖ {levelname}{RESET}"
+            levelname = f"{RED}{levelname}:{RESET}"
         elif levelname == "DEBUG":
-            levelname = f"{BLUE}⚙ {levelname}{RESET}"
+            levelname = f"{BLUE}{levelname}:{RESET}"
         
         # Format the message with appropriate style
         message = record.getMessage()
@@ -41,10 +41,7 @@ class UvicornFormatter(logging.Formatter):
         elif record.levelname == "WARNING":
             message = f"{YELLOW}{message}{RESET}"
         
-        # Add a separator line for better readability
-        separator = f"{BLUE}─{RESET}" * 80
-        
-        return f"\n{separator}\n{timestamp} | {levelname} | {message}\n{separator}"
+        return f"{levelname:19}{message}"
 
 class PlainFormatter(logging.Formatter):
     """Formatter that removes ANSI color codes."""
@@ -64,7 +61,7 @@ class PlainFormatter(logging.Formatter):
 
 # Configure logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(os.getenv("LOG_LEVEL", "INFO"))
 
 # Create console handler with Uvicorn formatter
 console_handler = logging.StreamHandler(sys.stdout)
@@ -127,9 +124,31 @@ def display_configuration():
         "Token Expiration (minutes)": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
     }
     
+    # System information
+    system_info = {
+        "Python Version": sys.version,
+        "Platform": sys.platform,
+        "Working Directory": os.getcwd(),
+        "Environment Files": {
+            "Base": str(Path(__file__).parent / ".env"),
+            "Current": str(Path(__file__).parent / f".env.{get_environment()}")
+        }
+    }
+    
     logger.info("Application Configuration:")
     for key, value in config.items():
         logger.info(f"{BLUE}{key}{RESET}: {value}")
+    
+    logger.debug("System Information:")
+    for key, value in system_info.items():
+        logger.debug(f"{BLUE}{key}{RESET}: {value}")
+    
+    # Log file information
+    log_file = get_log_file()
+    log_path = Path(log_file)
+    logger.debug(f"Log file path: {log_path.absolute()}")
+    logger.debug(f"Log file exists: {log_path.exists()}")
+    logger.debug(f"Log file size: {log_path.stat().st_size if log_path.exists() else 0} bytes")
 
 def load_environment():
     """Load the appropriate environment file based on ACM_ENVIRONMENT."""
@@ -153,6 +172,11 @@ def load_environment():
     if not os.getenv("ACM_ENVIRONMENT"):
         os.environ["ACM_ENVIRONMENT"] = "development"
         os.environ["DEBUG"] = "True"
+    
+    # Set the log level from environment
+    log_level = os.getenv("LOG_LEVEL", "INFO")
+    logger.setLevel(log_level)
+    logger.info(f"Log level set to {log_level}")
     
     # Configure file handler after environment is loaded
     log_file = get_log_file()
