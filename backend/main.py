@@ -14,7 +14,7 @@ if str(backend_dir) not in sys.path:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import books, movies, book_series, movie_collections, users
-from utils.environment import get_debug, get_cors_origins, get_environment
+from config.environment import get_debug, get_cors_origins, get_environment
 
 app = FastAPI(
     title=f"App Collection Manager API ({get_environment().title()})",

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from fastapi import HTTPException
 from models.book import Book
-from utils.database import get_database
+from core.database import get_database
 from datetime import datetime
 
 class BookService:

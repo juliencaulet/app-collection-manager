@@ -1,8 +1,8 @@
 from typing import Optional
 from fastapi import HTTPException
 from models.user import User
-from utils.database import get_database
-from utils.security import get_password_hash, verify_password
+from core.database import get_database
+from core.security import get_password_hash, verify_password
 from datetime import datetime
 
 class UserService:

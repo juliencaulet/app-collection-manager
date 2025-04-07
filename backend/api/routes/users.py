@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import List
 from models.user import User
 from services.user_service import UserService
-from utils.security import get_current_user, create_access_token
+from core.security import get_current_user, create_access_token
 
 router = APIRouter(prefix="/users", tags=["users"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")

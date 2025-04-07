@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from models.movie_collection import MovieCollection
 from services.movie_collection_service import MovieCollectionService
-from utils.security import get_current_user
+from core.security import get_current_user
 
 router = APIRouter(prefix="/movie-collections", tags=["movie-collections"])
 

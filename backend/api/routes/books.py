@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import List, Optional
 from models.book import Book
 from services.book_service import BookService
-from utils.security import get_current_user
+from core.security import get_current_user
 
 router = APIRouter(prefix="/books", tags=["books"])
 
