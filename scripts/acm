@@ -72,6 +72,7 @@ show_usage() {
     echo "  acm stop frontend                    # Stop frontend only"
     echo "  acm check database                   # Check database process"
     echo "  acm show database status             # Show database status"
+    echo "  acm show database databases          # Show all databases"
     echo "  acm show database collections        # Show database collections"
     echo "  acm show database users              # Show database users"
     echo "  acm show database indexes            # Show database indexes"
@@ -230,6 +231,23 @@ show_database_status() {
     fi
 }
 
+show_database_databases() {
+    echo -e "\n${YELLOW}=== MongoDB Databases ===${NC}"
+    
+    if ! pgrep -x "mongod" > /dev/null; then
+        echo -e "${RED}MongoDB is not running${NC}"
+        return 1
+    fi
+    
+    if ! mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}Available databases:${NC}"
+    mongosh --eval 'db.adminCommand("listDatabases").databases.forEach(function(d) { print(d.name + " (" + d.sizeOnDisk + " bytes)"); })' --quiet
+}
+
 show_database_collections() {
     echo -e "\n${YELLOW}=== Database Collections ===${NC}"
     
@@ -298,34 +316,45 @@ show_database_users() {
 show_database_indexes() {
     echo -e "\n${YELLOW}=== Database Indexes ===${NC}"
     
-    if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
-        echo -e "${GREEN}Connected to MongoDB${NC}"
-        
-        # Get indexes from all collections in all databases
-        mongosh --eval '
-            db.adminCommand("listDatabases").databases.forEach(function(d) {
-                var db = db.getSiblingDB(d.name);
-                var collections = db.getCollectionNames();
+    if ! pgrep -x "mongod" > /dev/null; then
+        echo -e "${RED}MongoDB is not running${NC}"
+        return 1
+    fi
+    
+    if ! mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}Connected to MongoDB${NC}"
+    
+    # Get indexes from all collections in all databases
+    mongosh --eval '
+        try {
+            const dbs = db.adminCommand("listDatabases").databases;
+            dbs.forEach(function(d) {
+                const currentDB = db.getSiblingDB(d.name);
+                const collections = currentDB.getCollectionNames();
                 if (collections.length > 0) {
                     print("Database: " + d.name);
                     collections.forEach(function(c) {
-                        var indexes = db[c].getIndexes();
+                        const indexes = currentDB[c].getIndexes();
                         if (indexes.length > 0) {
                             print("  Collection: " + c);
                             indexes.forEach(function(index) {
                                 print("    Index: " + index.name);
                                 print("      Keys: " + JSON.stringify(index.key));
-                                print("      Unique: " + index.unique);
+                                print("      Unique: " + (index.unique || false));
                                 print("");
                             });
                         }
                     });
                 }
             });
-        ' --quiet
-    else
-        echo -e "${GREEN}MongoDB is not accepting connections${NC}"
-    fi
+        } catch (e) {
+            print("Error: " + e.message);
+        }
+    ' --quiet
 }
 
 show_logs() {
@@ -616,6 +645,9 @@ show_component() {
                     "status")
                         show_database_status
                         ;;
+                    "databases")
+                        show_database_databases
+                        ;;
                     "collections")
                         show_database_collections
                         ;;
@@ -627,7 +659,7 @@ show_component() {
                         ;;
                     *)
                         echo -e "${RED}Error: Invalid show type '$show_type' for database${NC}"
-                        echo -e "${GREEN}Available types: status, collections, users, indexes${NC}"
+                        echo -e "${GREEN}Available types: status, databases, collections, users, indexes${NC}"
                         return 1
                         ;;
                 esac
@@ -717,7 +749,7 @@ handle_command() {
             if [ "$component" = "database" ]; then
                 if [ -z "$show_type" ]; then
                     echo -e "${RED}Error: Show type is required for database${NC}"
-                    echo -e "${GREEN}Available types: status, collections, users, indexes${NC}"
+                    echo -e "${GREEN}Available types: status, databases, collections, users, indexes${NC}"
                     exit 1
                 fi
                 show_component "database" "$show_type"

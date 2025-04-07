@@ -18,6 +18,7 @@ A comprehensive application for managing collections of books, movies, and TV sh
 - Motor for async MongoDB operations
 - Pydantic for data validation
 - JWT for authentication
+- Work with multiple environment like development test, production
 
 ### Frontend
 - React with TypeScript

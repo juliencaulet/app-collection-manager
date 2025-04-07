@@ -1,40 +1,15 @@
+"""
+Main FastAPI application entry point.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
-from motor.motor_asyncio import AsyncIOMotorClient
-import sys
-from pathlib import Path
+from core.config import settings
 
-# Add the project root to the Python path
-project_root = str(Path(__file__).parent.parent)
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-from core.config import get_settings, EnvironmentType
-from core.errors import CollectionManagerError
-from core.database import database
-from core.database_init import initialize_database
-from api.users import router as users_router
-
-# Get module-specific logger
-logger = logging.getLogger(__name__)
-
-# Get settings
-logger.debug("Loading settings in main.py")
-settings = get_settings()
-logger.debug(f"Settings loaded with environment: {settings.ENVIRONMENT}")
-
-# Log startup information
-logger.info(f"Starting {settings.APP_NAME} in {settings.ENVIRONMENT} environment")
-if settings.DEBUG:
-    logger.warning("Debug mode is enabled")
-
-# Create FastAPI application
 app = FastAPI(
-    title=settings.APP_NAME,
-    description="API for managing collections of books and video content",
-    version="0.1.0",
-    debug=settings.DEBUG
+    title="App Collection Manager",
+    description="A comprehensive collection manager for books, movies, and TV shows",
+    version="1.0.0"
 )
 
 # Configure CORS
@@ -46,61 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(users_router)
-
-@app.on_event("startup")
-async def startup_db_client():
-    """Connect to MongoDB and initialize database on startup."""
-    try:
-        await database.connect()
-        # Initialize database with collections and indexes
-        await initialize_database(database.db)
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {str(e)}")
-        raise
-
-@app.on_event("shutdown")
-async def shutdown_db_client():
-    """Close MongoDB connection on shutdown."""
-    try:
-        await database.close()
-    except Exception as e:
-        logger.error(f"Error closing MongoDB connection: {str(e)}")
-
-# Root endpoint
 @app.get("/")
 async def root():
-    return {"message": f"Welcome to {settings.APP_NAME} API"}
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    try:
-        # Test MongoDB connection
-        await database.db.command('ping')
-        return {"status": "healthy", "mongodb": "connected"}
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return {"status": "unhealthy", "mongodb": "disconnected"}
-
-# Settings endpoint
-@app.get("/settings")
-async def get_app_settings():
-    """Return current application settings (excluding sensitive information)"""
-    logger.debug("Accessing settings endpoint")
-    settings_response = {
-        "app_name": settings.APP_NAME,
-        "environment": settings.ENVIRONMENT,
-        "debug": settings.DEBUG,
-        "api_version": settings.API_V1_STR,
-        "mongodb_db_name": settings.MONGODB_DB_NAME,
-        "mongodb_url": settings.MONGODB_URL  # Always include the URL for now
-    }
-    logger.debug(f"Settings response: {settings_response}")
-    return settings_response
-
-# Error handler
-@app.exception_handler(CollectionManagerError)
-async def collection_manager_error_handler(request, exc: CollectionManagerError):
-    return {"detail": exc.detail}, exc.status_code 
+    """Root endpoint to check if the API is running."""
+    return {"message": "App Collection Manager API is running"} 
