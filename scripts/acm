@@ -26,6 +26,11 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
+# Log file paths
+BACKEND_LOG="$BACKEND_DIR/logs/uvicorn.log"
+FRONTEND_LOG="$FRONTEND_DIR/logs/npm.log"
+DATABASE_LOG=$(brew services info mongodb-community | grep "Log:" | awk '{print $2}')
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -49,6 +54,7 @@ show_usage() {
     echo "  stop     - Stop the specified component(s)"
     echo "  check    - Check the status of the specified component(s)"
     echo "            For database, can be combined with show: check database show <type>"
+    echo "  logs     - Show logs for the specified component"
     echo "  help     - Show this help message"
     echo "Components:"
     echo "  all      - All components (default)"
@@ -58,6 +64,8 @@ show_usage() {
     echo "Options:"
     echo "  --env-dev    - Use development environment (default)"
     echo "  --env-prod   - Use production environment"
+    echo "  --follow     - Follow logs in real-time"
+    echo "  --lines N    - Show last N lines (default: 50)"
     echo ""
     echo "Examples:"
     echo "  acm start                            # Start all components in development mode"
@@ -69,6 +77,9 @@ show_usage() {
     echo "  acm check database show indexes      # Show database indexes"
     echo "  acm start backend --env-prod         # Start backend in production mode"
     echo "  acm start frontend --env-prod        # Start frontend in production mode"
+    echo "  acm logs backend                     # Show backend logs"
+    echo "  acm logs backend --follow            # Follow backend logs in real-time"
+    echo "  acm logs backend --lines 100         # Show last 100 lines of backend logs"
     echo "  acm help                             # Show this help message"
 }
 
@@ -208,12 +219,12 @@ show_database_status() {
                 grep -i "error" "$LOG_FILE" | tail -n 5
             fi
         else
-            echo -e "${GREEN}MongoDB is running but not accepting connections${NC}"
+            echo -e "${RED}MongoDB is running but not accepting connections${NC}"
             echo -e "\n${YELLOW}Service Status:${NC}"
             brew services info mongodb-community
         fi
     else
-        echo -e "${GREEN}MongoDB is not running${NC}"
+        echo -e "${RED}MongoDB is not running${NC}"
         echo -e "\n${YELLOW}Service Status:${NC}"
         brew services info mongodb-community
     fi
@@ -312,6 +323,73 @@ show_database_indexes() {
     fi
 }
 
+show_logs() {
+    local component=$1
+    local follow=false
+    local lines=50
+    
+    # Parse options
+    while [[ $# -gt 1 ]]; do
+        case "$2" in
+            --follow)
+                follow=true
+                shift
+                ;;
+            --lines)
+                lines=$3
+                shift 2
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+    
+    case "$component" in
+        "backend")
+            if ! pgrep -f "uvicorn main:app" > /dev/null; then
+                echo -e "${RED}Backend is not running${NC}"
+                return 1
+            fi
+            
+            echo -e "\n${YELLOW}=== Backend Logs ===${NC}"
+            if [ "$follow" = true ]; then
+                tail -f "$BACKEND_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            else
+                tail -n "$lines" "$BACKEND_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            fi
+            ;;
+            
+        "frontend")
+            if ! pgrep -f "npm run dev" > /dev/null; then
+                echo -e "${RED}Frontend is not running${NC}"
+                return 1
+            fi
+            
+            echo -e "\n${YELLOW}=== Frontend Logs ===${NC}"
+            if [ "$follow" = true ]; then
+                tail -f "$FRONTEND_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            else
+                tail -n "$lines" "$FRONTEND_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            fi
+            ;;
+            
+        "database")
+            if ! brew services list | grep "mongodb-community" | grep -q "started"; then
+                echo -e "${RED}Database is not running${NC}"
+                return 1
+            fi
+            
+            echo -e "\n${YELLOW}=== Database Logs ===${NC}"
+            if [ "$follow" = true ]; then
+                tail -f "$DATABASE_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            else
+                tail -n "$lines" "$DATABASE_LOG" 2>/dev/null || echo -e "${RED}No log file found${NC}"
+            fi
+            ;;
+    esac
+}
+
 # Management Functions
 # ------------------
 check_component() {
@@ -361,10 +439,26 @@ start_component() {
             fi
             
             echo "Starting backend in $env mode..."
+            
+            # Activate virtual environment
+            if [ -d "$BACKEND_DIR/venv" ]; then
+                source "$BACKEND_DIR/venv/bin/activate"
+            elif [ -d "$BACKEND_DIR/.venv" ]; then
+                source "$BACKEND_DIR/.venv/bin/activate"
+            else
+                echo -e "${RED}Error: Virtual environment not found in $BACKEND_DIR${NC}"
+                return 1
+            fi
+            
+            # Set environment variables
+            export PYTHONPATH=$BACKEND_DIR:$PYTHONPATH
+            export ACM_ENVIRONMENT=$env
+            
+            # Start the FastAPI application
             if [ "$env" = "production" ]; then
                 cd "$BACKEND_DIR" && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 &>/dev/null &
             else
-                cd "$BACKEND_DIR" && uvicorn main:app --reload &>/dev/null &
+                cd "$BACKEND_DIR" && uvicorn main:app --reload --log-config=None &>"$BACKEND_LOG" &
             fi
             
             # Wait for backend to start
@@ -388,7 +482,7 @@ start_component() {
             if [ "$env" = "production" ]; then
                 cd "$FRONTEND_DIR" && npm run build && npm run start &>/dev/null &
             else
-                cd "$FRONTEND_DIR" && npm run dev &>/dev/null &
+                cd "$FRONTEND_DIR" && npm run dev &>"$FRONTEND_LOG" &
             fi
             
             # Wait for frontend to start
@@ -430,16 +524,29 @@ stop_component() {
     
     case "$component" in
         "backend")
-            if pgrep -f "uvicorn main:app" > /dev/null; then
+            # Find all uvicorn processes
+            PIDS=$(pgrep -f "uvicorn main:app")
+            if [ -n "$PIDS" ]; then
                 echo "Stopping backend..."
-                pkill -f "uvicorn main:app"
-                if ! pgrep -f "uvicorn main:app" > /dev/null; then
-                    echo -e "${GREEN}Backend stopped successfully${NC}"
-                else
+                # Kill all uvicorn processes
+                for PID in $PIDS; do
+                    kill $PID
+                done
+                
+                # Wait for processes to stop
+                sleep 2
+                
+                # Check if any processes are still running
+                if pgrep -f "uvicorn main:app" > /dev/null; then
                     echo -e "${RED}Failed to stop backend${NC}"
+                    return 1
+                else
+                    echo -e "${GREEN}Backend stopped successfully${NC}"
+                    return 0
                 fi
             else
-                echo "Backend is not running"
+                echo -e "${YELLOW}Backend is not running${NC}"
+                return 0
             fi
             ;;
             
@@ -453,7 +560,7 @@ stop_component() {
                     echo -e "${RED}Failed to stop frontend${NC}"
                 fi
             else
-                echo "Frontend is not running"
+                echo -e "${YELLOW}Frontend is not running${NC}"
             fi
             ;;
             
@@ -616,8 +723,8 @@ if [ "$COMMAND" = "check" ] && [ "$COMPONENT" = "database" ] && [ "$3" = "show" 
             ;;
     esac
     
-    # Execute the check command with show
-    check_component "database" "$SHOW_TYPE"
+    # Execute the show command
+    show_component "database" "$SHOW_TYPE"
     exit 0
 fi
 
@@ -640,7 +747,7 @@ done
 
 # Validate command
 case "$COMMAND" in
-    "start"|"stop"|"check"|"help")
+    "start"|"stop"|"check"|"help"|"logs")
         # Command is valid
         ;;
     *)
@@ -674,7 +781,14 @@ else
             stop_component "$COMPONENT"
             ;;
         "check")
-            check_component "$COMPONENT"
+            if [ "$COMPONENT" = "database" ] && [ -n "$SHOW_TYPE" ]; then
+                show_component "$COMPONENT" "$SHOW_TYPE"
+            else
+                check_component "$COMPONENT"
+            fi
+            ;;
+        "logs")
+            show_logs "$COMPONENT" "$@"
             ;;
     esac
 fi
