@@ -110,7 +110,7 @@ show_backend_status() {
         echo -e "\n${YELLOW}Start Time:${NC}"
         echo "$START_TIME"
     else
-        echo -e "${RED}Backend is not running${NC}"
+        echo -e "${GREEN}Backend is not running${NC}"
     fi
 }
 
@@ -142,7 +142,7 @@ show_frontend_status() {
         echo -e "\n${YELLOW}Port Information:${NC}"
         echo "Listening on: $PORT"
     else
-        echo -e "${RED}Frontend is not running${NC}"
+        echo -e "${GREEN}Frontend is not running${NC}"
     fi
 }
 
@@ -208,12 +208,12 @@ show_database_status() {
                 grep -i "error" "$LOG_FILE" | tail -n 5
             fi
         else
-            echo -e "${RED}MongoDB is running but not accepting connections${NC}"
+            echo -e "${GREEN}MongoDB is running but not accepting connections${NC}"
             echo -e "\n${YELLOW}Service Status:${NC}"
             brew services info mongodb-community
         fi
     else
-        echo -e "${RED}MongoDB is not running${NC}"
+        echo -e "${GREEN}MongoDB is not running${NC}"
         echo -e "\n${YELLOW}Service Status:${NC}"
         brew services info mongodb-community
     fi
@@ -225,19 +225,26 @@ show_database_collections() {
     if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
         echo -e "${GREEN}Connected to MongoDB${NC}"
         
-        # Get list of databases
-        DATABASES=$(mongosh --eval "JSON.stringify(db.adminCommand('listDatabases'))" --quiet)
-        DB_NAMES=$(echo $DATABASES | jq -r '.databases[].name')
-        
-        for DB in $DB_NAMES; do
-            echo -e "\n${YELLOW}Database: $DB${NC}"
-            COLLECTIONS=$(mongosh $DB --eval "JSON.stringify(db.getCollectionNames())" --quiet)
-            echo $COLLECTIONS | jq -r '.[]' | while read -r COLLECTION; do
-                echo "  - $COLLECTION"
-            done
-        done
+        # Get collections from all databases
+        mongosh --eval '
+            db.adminCommand("listDatabases").databases.forEach(function(d) {
+                var db = db.getSiblingDB(d.name);
+                var collections = db.getCollectionNames();
+                if (collections.length > 0) {
+                    print("Database: " + d.name);
+                    collections.forEach(function(c) {
+                        var stats = db[c].stats();
+                        print("  Collection: " + c);
+                        print("    Documents: " + stats.count);
+                        print("    Size: " + (stats.size/1024/1024).toFixed(2) + "MB");
+                        print("    Storage Size: " + (stats.storageSize/1024/1024).toFixed(2) + "MB");
+                        print("");
+                    });
+                }
+            });
+        ' --quiet
     else
-        echo -e "${RED}MongoDB is not accepting connections${NC}"
+        echo -e "${GREEN}MongoDB is not accepting connections${NC}"
     fi
 }
 
@@ -268,7 +275,7 @@ show_database_users() {
             }
         ' --quiet
     else
-        echo -e "${RED}MongoDB is not accepting connections${NC}"
+        echo -e "${GREEN}MongoDB is not accepting connections${NC}"
     fi
 }
 
@@ -278,23 +285,30 @@ show_database_indexes() {
     if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
         echo -e "${GREEN}Connected to MongoDB${NC}"
         
-        # Get list of databases
-        DATABASES=$(mongosh --eval "JSON.stringify(db.adminCommand('listDatabases'))" --quiet)
-        DB_NAMES=$(echo $DATABASES | jq -r '.databases[].name')
-        
-        for DB in $DB_NAMES; do
-            echo -e "\n${YELLOW}Database: $DB${NC}"
-            COLLECTIONS=$(mongosh $DB --eval "JSON.stringify(db.getCollectionNames())" --quiet)
-            echo $COLLECTIONS | jq -r '.[]' | while read -r COLLECTION; do
-                echo -e "\n  Collection: $COLLECTION"
-                INDEXES=$(mongosh $DB --eval "JSON.stringify(db.$COLLECTION.getIndexes())" --quiet)
-                echo $INDEXES | jq -r '.[] | "    - \(.name): \(.key | to_entries | map("\(.key): \(.value)") | join(", "))"' | while read -r INDEX; do
-                    echo "$INDEX"
-                done
-            done
-        done
+        # Get indexes from all collections in all databases
+        mongosh --eval '
+            db.adminCommand("listDatabases").databases.forEach(function(d) {
+                var db = db.getSiblingDB(d.name);
+                var collections = db.getCollectionNames();
+                if (collections.length > 0) {
+                    print("Database: " + d.name);
+                    collections.forEach(function(c) {
+                        var indexes = db[c].getIndexes();
+                        if (indexes.length > 0) {
+                            print("  Collection: " + c);
+                            indexes.forEach(function(index) {
+                                print("    Index: " + index.name);
+                                print("      Keys: " + JSON.stringify(index.key));
+                                print("      Unique: " + index.unique);
+                                print("");
+                            });
+                        }
+                    });
+                }
+            });
+        ' --quiet
     else
-        echo -e "${RED}MongoDB is not accepting connections${NC}"
+        echo -e "${GREEN}MongoDB is not accepting connections${NC}"
     fi
 }
 
@@ -302,37 +316,33 @@ show_database_indexes() {
 # ------------------
 check_component() {
     local component=$1
-    local show_type=$2
     
     case "$component" in
         "backend")
             if pgrep -f "uvicorn main:app" > /dev/null; then
-                echo "Backend is running"
+                echo -e "${GREEN}Backend is running${NC}"
                 return 0
             else
-                echo "Backend is not running"
+                echo -e "${RED}Backend is not running${NC}"
                 return 1
             fi
             ;;
         "frontend")
             if pgrep -f "npm run dev" > /dev/null; then
-                echo "Frontend is running"
+                echo -e "${GREEN}Frontend is running${NC}"
                 return 0
             else
-                echo "Frontend is not running"
+                echo -e "${RED}Frontend is not running${NC}"
                 return 1
             fi
             ;;
         "database")
             # First check if the service is running through brew
             if brew services list | grep "mongodb-community" | grep -q "started"; then
-                echo "Database is running"
-                if [ -n "$show_type" ]; then
-                    show_component "database" "$show_type"
-                fi
+                echo -e "${GREEN}Database is running${NC}"
                 return 0
             else
-                echo "Database is not running"
+                echo -e "${RED}Database is not running${NC}"
                 return 1
             fi
             ;;
@@ -341,86 +351,74 @@ check_component() {
 
 start_component() {
     local component=$1
-    local env=${2:-"development"}  # Default to development if not specified
+    local env=${2:-"development"}
     
     case "$component" in
         "backend")
             if pgrep -f "uvicorn main:app" > /dev/null; then
-                echo "Backend is already running"
+                echo -e "${YELLOW}Backend is already running${NC}"
                 return 0
             fi
             
-            # Check if database is running before starting backend
-            if ! brew services list | grep "mongodb-community" | grep -q "started"; then
-                echo "Error: Database is not running. Please start the database first using:"
-                echo "  ./scripts/acm start database"
-                return 1
-            fi
-            
             echo "Starting backend in $env mode..."
-            cd "$BACKEND_DIR" || return 1
-            
-            # Activate virtual environment
-            if [ -d "$BACKEND_DIR/venv" ]; then
-                source "$BACKEND_DIR/venv/bin/activate"
-            elif [ -d "$BACKEND_DIR/.venv" ]; then
-                source "$BACKEND_DIR/.venv/bin/activate"
+            if [ "$env" = "production" ]; then
+                cd "$BACKEND_DIR" && uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4 &>/dev/null &
             else
-                echo "Error: Virtual environment not found in $BACKEND_DIR"
-                return 1
+                cd "$BACKEND_DIR" && uvicorn main:app --reload &>/dev/null &
             fi
             
-            # Set environment variables
-            export PYTHONPATH=$BACKEND_DIR:$PYTHONPATH
-            export ACM_ENVIRONMENT=$env
-            
-            # Start the FastAPI application
-            uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
-            echo "Backend started successfully in $env mode"
+            # Wait for backend to start
+            sleep 2
+            if pgrep -f "uvicorn main:app" > /dev/null; then
+                echo -e "${GREEN}Backend started successfully${NC}"
+                return 0
+            else
+                echo -e "${RED}Failed to start backend${NC}"
+                return 1
+            fi
             ;;
             
         "frontend")
             if pgrep -f "npm run dev" > /dev/null; then
-                echo "Frontend is already running"
+                echo -e "${YELLOW}Frontend is already running${NC}"
                 return 0
-            fi
-            
-            # Check if database is running
-            if ! brew services list | grep "mongodb-community" | grep -q "started"; then
-                echo "Error: Database is not running. Please start the database first using:"
-                echo "  ./scripts/acm start database"
-                return 1
-            fi
-            
-            # Check if backend is running
-            if ! pgrep -f "uvicorn main:app" > /dev/null; then
-                echo "Error: Backend is not running. Please start the backend first using:"
-                echo "  ./scripts/acm start backend"
-                return 1
             fi
             
             echo "Starting frontend in $env mode..."
-            cd "$FRONTEND_DIR" || return 1
+            if [ "$env" = "production" ]; then
+                cd "$FRONTEND_DIR" && npm run build && npm run start &>/dev/null &
+            else
+                cd "$FRONTEND_DIR" && npm run dev &>/dev/null &
+            fi
             
-            # Set environment variables
-            export ACM_ENVIRONMENT=$env
-            
-            npm run dev &
-            echo "Frontend started successfully in $env mode"
+            # Wait for frontend to start
+            sleep 2
+            if pgrep -f "npm run dev" > /dev/null; then
+                echo -e "${GREEN}Frontend started successfully${NC}"
+                return 0
+            else
+                echo -e "${RED}Failed to start frontend${NC}"
+                return 1
+            fi
             ;;
             
         "database")
+            # First check if the service is running through brew
             if brew services list | grep "mongodb-community" | grep -q "started"; then
-                echo "Database is already running"
+                echo -e "${YELLOW}Database is already running${NC}"
                 return 0
             fi
             
-            echo "Starting database (shared between environments)..."
-            if brew services start mongodb-community; then
-                echo "Database started successfully"
+            echo "Starting database..."
+            brew services start mongodb-community &>/dev/null
+            
+            # Wait for database to start
+            sleep 2
+            if brew services list | grep "mongodb-community" | grep -q "started"; then
+                echo -e "${GREEN}Database started successfully${NC}"
                 return 0
             else
-                echo "Failed to start database"
+                echo -e "${RED}Failed to start database${NC}"
                 return 1
             fi
             ;;
@@ -432,38 +430,45 @@ stop_component() {
     
     case "$component" in
         "backend")
-            echo "Stopping backend..."
-            pkill -f "uvicorn main:app"
-            if [ $? -eq 0 ]; then
-                echo "Backend stopped successfully"
+            if pgrep -f "uvicorn main:app" > /dev/null; then
+                echo "Stopping backend..."
+                pkill -f "uvicorn main:app"
+                if ! pgrep -f "uvicorn main:app" > /dev/null; then
+                    echo -e "${GREEN}Backend stopped successfully${NC}"
+                else
+                    echo -e "${RED}Failed to stop backend${NC}"
+                fi
             else
-                echo "Backend was not running"
+                echo "Backend is not running"
             fi
             ;;
             
         "frontend")
-            echo "Stopping frontend..."
-            pkill -f "npm run dev"
-            if [ $? -eq 0 ]; then
-                echo "Frontend stopped successfully"
+            if pgrep -f "npm run dev" > /dev/null; then
+                echo "Stopping frontend..."
+                pkill -f "npm run dev"
+                if ! pgrep -f "npm run dev" > /dev/null; then
+                    echo -e "${GREEN}Frontend stopped successfully${NC}"
+                else
+                    echo -e "${RED}Failed to stop frontend${NC}"
+                fi
             else
-                echo "Frontend was not running"
+                echo "Frontend is not running"
             fi
             ;;
             
         "database")
-            echo "Stopping database..."
+            # First check if the service is running through brew
             if brew services list | grep "mongodb-community" | grep -q "started"; then
-                if brew services stop mongodb-community; then
-                    echo "Database stopped successfully"
-                    return 0
+                echo "Stopping database..."
+                brew services stop mongodb-community &>/dev/null
+                if ! brew services list | grep "mongodb-community" | grep -q "started"; then
+                    echo -e "${GREEN}Database stopped successfully${NC}"
                 else
-                    echo "Failed to stop database"
-                    return 1
+                    echo -e "${RED}Failed to stop database${NC}"
                 fi
             else
-                echo "Database was not running"
-                return 0
+                echo -e "${YELLOW}Database is not running${NC}"
             fi
             ;;
     esac
@@ -479,7 +484,7 @@ show_component() {
                 show_backend_status
                 return 0
             else
-                echo "Backend is not running"
+                echo -e "${RED}Backend is not running${NC}"
                 return 1
             fi
             ;;
@@ -488,7 +493,7 @@ show_component() {
                 show_frontend_status
                 return 0
             else
-                echo "Frontend is not running"
+                echo -e "${RED}Frontend is not running${NC}"
                 return 1
             fi
             ;;
@@ -509,14 +514,14 @@ show_component() {
                         show_database_indexes
                         ;;
                     *)
-                        echo "Error: Invalid show type '$show_type' for database"
-                        echo "Available types: status, collections, users, indexes"
+                        echo -e "${RED}Error: Invalid show type '$show_type' for database${NC}"
+                        echo -e "${GREEN}Available types: status, collections, users, indexes${NC}"
                         return 1
                         ;;
                 esac
                 return 0
             else
-                echo "Database is not running"
+                echo -e "${RED}Database is not running${NC}"
                 return 1
             fi
             ;;
