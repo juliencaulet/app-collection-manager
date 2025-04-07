@@ -75,3 +75,10 @@ class BookSeriesService:
             series.book_ids.remove(book_id)
             return await self.update_series(series_id, series)
         return series
+
+    async def update_series_status(self, series_id: str, status: str) -> BookSeries:
+        """Update a book series's status."""
+        series = await self.get_series(series_id)
+        series.status = status
+        series.updated_at = datetime.utcnow()
+        return await self.update_series(series_id, series)

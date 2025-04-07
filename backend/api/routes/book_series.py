@@ -49,3 +49,13 @@ async def search_series(
 ):
     """Search book series by name or author."""
     return await service.search_series(query)
+
+@router.patch("/{series_id}/status", response_model=BookSeries)
+async def update_series_status(
+    series_id: str,
+    status: str = Query(..., description="New status for the series"),
+    service: BookSeriesService = Depends(),
+    current_user = Depends(get_current_user)
+):
+    """Update a book series's status."""
+    return await service.update_series_status(series_id, status)
