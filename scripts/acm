@@ -1,33 +1,308 @@
 #!/bin/bash
+# =============================
+# App Collection Manager (ACM) Control Script
+# This script provides a unified interface to manage the ACM application components:
+# - Backend (FastAPI)
+# - Frontend (Next.js)
+# - Database (MongoDB)
+#
+# Features:
+# - Start/stop individual components or all at once
+# - Check component status with basic or detailed information
+# - Support for development and production environments
+# - Automatic dependency checking (e.g., database must be running before backend)
+# - Consistent process management across all components
+#
+# Usage: ./scripts/acm <command> [component] [options]
+# See 'show_usage' function for detailed documentation.
 
-# Get the directory where the script is located
+# =============================================================================
+# VARIABLES
+# =============================================================================
+
+# Directory paths
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 
-# Function to show usage
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Default values
+DEFAULT_ENV="development"
+DEFAULT_COMPONENT="all"
+
+# =============================================================================
+# FUNCTIONS
+# =============================================================================
+
+# Utility Functions
+# ----------------
 show_usage() {
-    echo "Usage: acm <command> [component]"
+    echo "Usage: acm <command> [component] [options]"
     echo "Commands:"
     echo "  start    - Start the specified component(s)"
     echo "  stop     - Stop the specified component(s)"
     echo "  check    - Check the status of the specified component(s)"
+    echo "            For database, can be combined with show: check database show <type>"
+    echo "  help     - Show this help message"
     echo "Components:"
     echo "  all      - All components (default)"
     echo "  backend  - Backend only"
     echo "  frontend - Frontend only"
-    echo "  database - Database only"
+    echo "  database - Database only (shared between environments)"
+    echo "Options:"
+    echo "  --env-dev    - Use development environment (default)"
+    echo "  --env-prod   - Use production environment"
     echo ""
     echo "Examples:"
-    echo "  acm start              # Start all components"
-    echo "  acm stop frontend      # Stop frontend only"
-    echo "  acm check database     # Check database status"
+    echo "  acm start                            # Start all components in development mode"
+    echo "  acm stop frontend                    # Stop frontend only"
+    echo "  acm check database                   # Check database process"
+    echo "  acm check database show status       # Show database status"
+    echo "  acm check database show collections  # Show database collections"
+    echo "  acm check database show users        # Show database users"
+    echo "  acm check database show indexes      # Show database indexes"
+    echo "  acm start backend --env-prod         # Start backend in production mode"
+    echo "  acm start frontend --env-prod        # Start frontend in production mode"
+    echo "  acm help                             # Show this help message"
 }
 
-# Function to check component status
+format_bytes() {
+    local bytes=$1
+    if [ $bytes -lt 1024 ]; then
+        echo "${bytes}B"
+    elif [ $bytes -lt 1048576 ]; then
+        echo "$((bytes/1024))KB"
+    elif [ $bytes -lt 1073741824 ]; then
+        echo "$((bytes/1048576))MB"
+    else
+        echo "$((bytes/1073741824))GB"
+    fi
+}
+
+# Status Functions
+# ---------------
+show_backend_status() {
+    echo -e "\n${YELLOW}=== Backend Status ===${NC}"
+    
+    # Get process information
+    PID=$(pgrep -f "uvicorn main:app")
+    if [ -n "$PID" ]; then
+        echo -e "${GREEN}Backend is running (PID: $PID)${NC}"
+        
+        # Get memory usage
+        MEMORY=$(ps -o rss= -p $PID)
+        echo -e "\n${YELLOW}Memory Usage:${NC}"
+        echo "Resident: $(format_bytes $((MEMORY * 1024)))"
+        
+        # Get CPU usage
+        CPU=$(ps -o %cpu= -p $PID)
+        echo -e "\n${YELLOW}CPU Usage:${NC}"
+        echo "CPU: ${CPU}%"
+        
+        # Get uptime
+        START_TIME=$(ps -o lstart= -p $PID)
+        echo -e "\n${YELLOW}Start Time:${NC}"
+        echo "$START_TIME"
+    else
+        echo -e "${RED}Backend is not running${NC}"
+    fi
+}
+
+show_frontend_status() {
+    echo -e "\n${YELLOW}=== Frontend Status ===${NC}"
+    
+    # Get process information
+    PID=$(pgrep -f "npm run dev")
+    if [ -n "$PID" ]; then
+        echo -e "${GREEN}Frontend is running (PID: $PID)${NC}"
+        
+        # Get memory usage
+        MEMORY=$(ps -o rss= -p $PID)
+        echo -e "\n${YELLOW}Memory Usage:${NC}"
+        echo "Resident: $(format_bytes $((MEMORY * 1024)))"
+        
+        # Get CPU usage
+        CPU=$(ps -o %cpu= -p $PID)
+        echo -e "\n${YELLOW}CPU Usage:${NC}"
+        echo "CPU: ${CPU}%"
+        
+        # Get uptime
+        START_TIME=$(ps -o lstart= -p $PID)
+        echo -e "\n${YELLOW}Start Time:${NC}"
+        echo "$START_TIME"
+        
+        # Get port information
+        PORT=$(lsof -i -P -n | grep LISTEN | grep $PID | awk '{print $9}')
+        echo -e "\n${YELLOW}Port Information:${NC}"
+        echo "Listening on: $PORT"
+    else
+        echo -e "${RED}Frontend is not running${NC}"
+    fi
+}
+
+show_database_status() {
+    echo -e "\n${YELLOW}=== MongoDB Status ===${NC}"
+    
+    # Check if MongoDB is running
+    if pgrep -x "mongod" > /dev/null; then
+        echo -e "${GREEN}MongoDB is running${NC}"
+        
+        # Check if we can connect to MongoDB
+        if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+            echo -e "${GREEN}MongoDB is accepting connections${NC}"
+            
+            # Get MongoDB version
+            echo -e "\n${YELLOW}Version Information:${NC}"
+            mongosh --eval "db.version()" --quiet
+            
+            # Get server status
+            echo -e "\n${YELLOW}Server Status:${NC}"
+            SERVER_STATUS=$(mongosh --eval "JSON.stringify(db.serverStatus())" --quiet)
+            
+            # Extract and display relevant information
+            UPTIME=$(echo $SERVER_STATUS | jq -r '.uptime')
+            CONNECTIONS=$(echo $SERVER_STATUS | jq -r '.connections.current')
+            ACTIVE=$(echo $SERVER_STATUS | jq -r '.globalLock.activeClients.total')
+            MEM_RESIDENT=$(echo $SERVER_STATUS | jq -r '.mem.resident')
+            MEM_VIRTUAL=$(echo $SERVER_STATUS | jq -r '.mem.virtual')
+            
+            echo "Uptime: $((UPTIME/86400))d $((UPTIME%86400/3600))h $(((UPTIME%3600)/60))m"
+            echo "Current Connections: $CONNECTIONS"
+            echo "Active Clients: $ACTIVE"
+            echo "Memory Usage:"
+            echo "  - Resident: ${MEM_RESIDENT}MB"
+            echo "  - Virtual: ${MEM_VIRTUAL}MB"
+            
+            # Get database statistics
+            echo -e "\n${YELLOW}Database Statistics:${NC}"
+            mongosh --eval '
+                db.adminCommand("listDatabases").databases.forEach(function(d) {
+                    var stats = db.getSiblingDB(d.name).stats();
+                    print(d.name + ":");
+                    print("  Collections: " + stats.collections);
+                    print("  Objects: " + stats.objects);
+                    print("  Storage Size: " + (stats.storageSize/1024/1024).toFixed(2) + "MB");
+                })
+            ' --quiet
+            
+            # Show service status
+            echo -e "\n${YELLOW}Service Status:${NC}"
+            brew services info mongodb-community
+            
+            # Show log file status
+            LOG_FILE="/usr/local/var/log/mongodb/mongo.log"
+            if [ -f "$LOG_FILE" ]; then
+                echo -e "\n${YELLOW}Log File Status:${NC}"
+                LOG_SIZE=$(stat -f%z "$LOG_FILE")
+                echo "Log file size: $(format_bytes $LOG_SIZE)"
+                echo "Last modified: $(stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$LOG_FILE")"
+                
+                # Show recent errors if any
+                echo -e "\n${YELLOW}Recent Errors (if any):${NC}"
+                grep -i "error" "$LOG_FILE" | tail -n 5
+            fi
+        else
+            echo -e "${RED}MongoDB is running but not accepting connections${NC}"
+            echo -e "\n${YELLOW}Service Status:${NC}"
+            brew services info mongodb-community
+        fi
+    else
+        echo -e "${RED}MongoDB is not running${NC}"
+        echo -e "\n${YELLOW}Service Status:${NC}"
+        brew services info mongodb-community
+    fi
+}
+
+show_database_collections() {
+    echo -e "\n${YELLOW}=== Database Collections ===${NC}"
+    
+    if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+        echo -e "${GREEN}Connected to MongoDB${NC}"
+        
+        # Get list of databases
+        DATABASES=$(mongosh --eval "JSON.stringify(db.adminCommand('listDatabases'))" --quiet)
+        DB_NAMES=$(echo $DATABASES | jq -r '.databases[].name')
+        
+        for DB in $DB_NAMES; do
+            echo -e "\n${YELLOW}Database: $DB${NC}"
+            COLLECTIONS=$(mongosh $DB --eval "JSON.stringify(db.getCollectionNames())" --quiet)
+            echo $COLLECTIONS | jq -r '.[]' | while read -r COLLECTION; do
+                echo "  - $COLLECTION"
+            done
+        done
+    else
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
+    fi
+}
+
+show_database_users() {
+    echo -e "\n${YELLOW}=== Database Users ===${NC}"
+    
+    if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+        echo -e "${GREEN}Connected to MongoDB${NC}"
+        
+        # Get users from admin database
+        mongosh admin --eval '
+            try {
+                const result = db.getUsers();
+                if (result && result.users && result.users.length > 0) {
+                    result.users.forEach(function(user) {
+                        print("User: " + user.user);
+                        print("Roles:");
+                        user.roles.forEach(function(role) {
+                            print("  - " + role.role + "@" + role.db);
+                        });
+                        print("");
+                    });
+                } else {
+                    print("No users found in the admin database");
+                }
+            } catch (e) {
+                print("Error getting users: " + e.message);
+            }
+        ' --quiet
+    else
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
+    fi
+}
+
+show_database_indexes() {
+    echo -e "\n${YELLOW}=== Database Indexes ===${NC}"
+    
+    if mongosh --eval "db.adminCommand('ping')" &>/dev/null; then
+        echo -e "${GREEN}Connected to MongoDB${NC}"
+        
+        # Get list of databases
+        DATABASES=$(mongosh --eval "JSON.stringify(db.adminCommand('listDatabases'))" --quiet)
+        DB_NAMES=$(echo $DATABASES | jq -r '.databases[].name')
+        
+        for DB in $DB_NAMES; do
+            echo -e "\n${YELLOW}Database: $DB${NC}"
+            COLLECTIONS=$(mongosh $DB --eval "JSON.stringify(db.getCollectionNames())" --quiet)
+            echo $COLLECTIONS | jq -r '.[]' | while read -r COLLECTION; do
+                echo -e "\n  Collection: $COLLECTION"
+                INDEXES=$(mongosh $DB --eval "JSON.stringify(db.$COLLECTION.getIndexes())" --quiet)
+                echo $INDEXES | jq -r '.[] | "    - \(.name): \(.key | to_entries | map("\(.key): \(.value)") | join(", "))"' | while read -r INDEX; do
+                    echo "$INDEX"
+                done
+            done
+        done
+    else
+        echo -e "${RED}MongoDB is not accepting connections${NC}"
+    fi
+}
+
+# Management Functions
+# ------------------
 check_component() {
     local component=$1
+    local show_type=$2
     
     case "$component" in
         "backend")
@@ -49,8 +324,12 @@ check_component() {
             fi
             ;;
         "database")
-            if brew services list | grep mongodb-community | grep started > /dev/null; then
+            # First check if the service is running through brew
+            if brew services list | grep "mongodb-community" | grep -q "started"; then
                 echo "Database is running"
+                if [ -n "$show_type" ]; then
+                    show_component "database" "$show_type"
+                fi
                 return 0
             else
                 echo "Database is not running"
@@ -60,9 +339,9 @@ check_component() {
     esac
 }
 
-# Function to start a component
 start_component() {
     local component=$1
+    local env=${2:-"development"}  # Default to development if not specified
     
     case "$component" in
         "backend")
@@ -71,7 +350,14 @@ start_component() {
                 return 0
             fi
             
-            echo "Starting backend..."
+            # Check if database is running before starting backend
+            if ! brew services list | grep "mongodb-community" | grep -q "started"; then
+                echo "Error: Database is not running. Please start the database first using:"
+                echo "  ./scripts/acm start database"
+                return 1
+            fi
+            
+            echo "Starting backend in $env mode..."
             cd "$BACKEND_DIR" || return 1
             
             # Activate virtual environment
@@ -86,10 +372,11 @@ start_component() {
             
             # Set environment variables
             export PYTHONPATH=$BACKEND_DIR:$PYTHONPATH
+            export ACM_ENVIRONMENT=$env
             
             # Start the FastAPI application
             uvicorn main:app --reload --host 0.0.0.0 --port 8000 &
-            echo "Backend started successfully"
+            echo "Backend started successfully in $env mode"
             ;;
             
         "frontend")
@@ -98,26 +385,48 @@ start_component() {
                 return 0
             fi
             
-            echo "Starting frontend..."
+            # Check if database is running
+            if ! brew services list | grep "mongodb-community" | grep -q "started"; then
+                echo "Error: Database is not running. Please start the database first using:"
+                echo "  ./scripts/acm start database"
+                return 1
+            fi
+            
+            # Check if backend is running
+            if ! pgrep -f "uvicorn main:app" > /dev/null; then
+                echo "Error: Backend is not running. Please start the backend first using:"
+                echo "  ./scripts/acm start backend"
+                return 1
+            fi
+            
+            echo "Starting frontend in $env mode..."
             cd "$FRONTEND_DIR" || return 1
+            
+            # Set environment variables
+            export ACM_ENVIRONMENT=$env
+            
             npm run dev &
-            echo "Frontend started successfully"
+            echo "Frontend started successfully in $env mode"
             ;;
             
         "database")
-            if brew services list | grep mongodb-community | grep started > /dev/null; then
+            if brew services list | grep "mongodb-community" | grep -q "started"; then
                 echo "Database is already running"
                 return 0
             fi
             
-            echo "Starting database..."
-            brew services start mongodb-community
-            echo "Database started successfully"
+            echo "Starting database (shared between environments)..."
+            if brew services start mongodb-community; then
+                echo "Database started successfully"
+                return 0
+            else
+                echo "Failed to start database"
+                return 1
+            fi
             ;;
     esac
 }
 
-# Function to stop a component
 stop_component() {
     local component=$1
     
@@ -144,28 +453,99 @@ stop_component() {
             
         "database")
             echo "Stopping database..."
-            brew services stop mongodb-community
-            if [ $? -eq 0 ]; then
-                echo "Database stopped successfully"
+            if brew services list | grep "mongodb-community" | grep -q "started"; then
+                if brew services stop mongodb-community; then
+                    echo "Database stopped successfully"
+                    return 0
+                else
+                    echo "Failed to stop database"
+                    return 1
+                fi
             else
                 echo "Database was not running"
+                return 0
             fi
             ;;
     esac
 }
 
-# Function to handle all components
+show_component() {
+    local component=$1
+    local show_type=$2
+    
+    case "$component" in
+        "backend")
+            if pgrep -f "uvicorn main:app" > /dev/null; then
+                show_backend_status
+                return 0
+            else
+                echo "Backend is not running"
+                return 1
+            fi
+            ;;
+        "frontend")
+            if pgrep -f "npm run dev" > /dev/null; then
+                show_frontend_status
+                return 0
+            else
+                echo "Frontend is not running"
+                return 1
+            fi
+            ;;
+        "database")
+            # First check if the service is running through brew
+            if brew services list | grep "mongodb-community" | grep -q "started"; then
+                case "$show_type" in
+                    "status")
+                        show_database_status
+                        ;;
+                    "collections")
+                        show_database_collections
+                        ;;
+                    "users")
+                        show_database_users
+                        ;;
+                    "indexes")
+                        show_database_indexes
+                        ;;
+                    *)
+                        echo "Error: Invalid show type '$show_type' for database"
+                        echo "Available types: status, collections, users, indexes"
+                        return 1
+                        ;;
+                esac
+                return 0
+            else
+                echo "Database is not running"
+                return 1
+            fi
+            ;;
+    esac
+}
+
 handle_all_components() {
     local command=$1
+    local env=${2:-"development"}
     
     case "$command" in
         "start")
             # Start in order: database -> backend -> frontend
-            start_component "database"
+            if ! start_component "database"; then
+                echo "Failed to start database. Aborting."
+                return 1
+            fi
             sleep 2
-            start_component "backend"
+            
+            if ! start_component "backend" "$env"; then
+                echo "Failed to start backend. Aborting."
+                return 1
+            fi
             sleep 2
-            start_component "frontend"
+            
+            if ! start_component "frontend" "$env"; then
+                echo "Failed to start frontend. Aborting."
+                return 1
+            fi
             ;;
             
         "stop")
@@ -188,18 +568,74 @@ handle_all_components() {
     esac
 }
 
-# Main script logic
+# =============================================================================
+# MAIN SCRIPT
+# =============================================================================
+
+# Check for minimum arguments
 if [ $# -lt 1 ]; then
     show_usage
     exit 1
 fi
 
+# Initialize variables
 COMMAND=$1
-COMPONENT=${2:-"all"}  # Default to "all" if no component specified
+COMPONENT=${2:-$DEFAULT_COMPONENT}
+ENV=$DEFAULT_ENV
+SHOW_TYPE=""
+
+# Handle help command
+if [ "$COMMAND" = "help" ]; then
+    show_usage
+    exit 0
+fi
+
+# Special case for check database show command
+if [ "$COMMAND" = "check" ] && [ "$COMPONENT" = "database" ] && [ "$3" = "show" ]; then
+    SHOW_TYPE=$4
+    if [ -z "$SHOW_TYPE" ]; then
+        echo "Error: Show type is required for database show command"
+        echo "Available types: status, collections, users, indexes"
+        exit 1
+    fi
+    
+    # Validate show type
+    case "$SHOW_TYPE" in
+        "status"|"collections"|"users"|"indexes")
+            # Show type is valid
+            ;;
+        *)
+            echo "Error: Invalid show type '$SHOW_TYPE'"
+            echo "Available types: status, collections, users, indexes"
+            exit 1
+            ;;
+    esac
+    
+    # Execute the check command with show
+    check_component "database" "$SHOW_TYPE"
+    exit 0
+fi
+
+# Parse options
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --env-dev)
+            ENV="development"
+            shift
+            ;;
+        --env-prod)
+            ENV="production"
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 # Validate command
 case "$COMMAND" in
-    "start"|"stop"|"check")
+    "start"|"stop"|"check"|"help")
         # Command is valid
         ;;
     *)
@@ -223,11 +659,11 @@ esac
 
 # Execute the command
 if [ "$COMPONENT" = "all" ]; then
-    handle_all_components "$COMMAND"
+    handle_all_components "$COMMAND" "$ENV"
 else
     case "$COMMAND" in
         "start")
-            start_component "$COMPONENT"
+            start_component "$COMPONENT" "$ENV"
             ;;
         "stop")
             stop_component "$COMPONENT"
