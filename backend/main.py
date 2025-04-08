@@ -5,29 +5,42 @@ Main FastAPI application entry point.
 import os
 import sys
 from pathlib import Path
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from config.environment import get_debug, get_cors_origins, get_environment, logger, get_configuration, get_port, get_api_prefix
+from core.database import get_database
+from api.v1.api import router as api_router
+import logging
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
 
 # Add the backend directory to Python path
 backend_dir = Path(__file__).parent.absolute()
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from config.environment import get_debug, get_cors_origins, get_environment, logger, get_configuration, get_port
-from core.database import get_database
-from api.routes import users, books, book_series, movies, movie_collections
+# Configure logging
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+log_file = os.path.join(log_dir, f"{get_environment()}.log")
+handler = RotatingFileHandler(log_file, maxBytes=10000000, backupCount=5)
+handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
+logger = logging.getLogger("uvicorn")
+logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
 # Get the port from environment
 port = get_port()
 
 app = FastAPI(
     title=f"App Collection Manager API ({get_environment().title()})",
-    description="API for managing book and movie collections",
+    description="API for managing collections of books, movies, and TV shows",
     version="1.0.0",
     debug=get_debug()
 )
-
-
 
 # Configure CORS
 # app.add_middleware(
@@ -38,12 +51,8 @@ app = FastAPI(
 #     allow_headers=["*"],
 # )
 
-# Include routers
-app.include_router(users.router)
-app.include_router(books.router)
-app.include_router(movies.router)
-app.include_router(book_series.router)
-app.include_router(movie_collections.router)
+# Include API routes
+app.include_router(api_router, prefix=get_api_prefix())
 
 @app.get("/")
 async def root():

@@ -35,6 +35,10 @@ def get_port() -> int:
     """Get the server port."""
     return int(os.getenv("PORT", "8001"))
 
+def get_api_prefix() -> str:
+    """Get the API prefix from environment variables."""
+    return os.getenv("API_PREFIX", "/api/v1")
+
 def get_configuration() -> dict:
     return {
         "application_info" : {
@@ -46,7 +50,7 @@ def get_configuration() -> dict:
             "CORS Origins": get_cors_origins(),
             "Log File": get_log_file(),
             "Log Level": os.getenv("LOG_LEVEL", "INFO"),
-            "API Version": os.getenv("API_V1_STR", "/api/v1"),
+            "API Prefix": get_api_prefix(),
             "Token Exp. (min)": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
         },
         "system_info" : {
