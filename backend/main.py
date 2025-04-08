@@ -13,9 +13,12 @@ if str(backend_dir) not in sys.path:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from config.environment import get_debug, get_cors_origins, get_environment, logger
+from config.environment import get_debug, get_cors_origins, get_environment, logger, get_configuration, get_port
 from core.database import get_database
 from api.routes import users, books, book_series, movies, movie_collections
+
+# Get the port from environment
+port = get_port()
 
 app = FastAPI(
     title=f"App Collection Manager API ({get_environment().title()})",
@@ -24,14 +27,16 @@ app = FastAPI(
     debug=get_debug()
 )
 
+
+
 # Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=get_cors_origins(),
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
 
 # Include routers
 app.include_router(users.router)
@@ -43,6 +48,10 @@ app.include_router(movie_collections.router)
 @app.get("/")
 async def root():
     return {"message": "Welcome to App Collection Manager API"}
+
+@app.get("/config")
+async def config(): 
+    return get_configuration()
 
 @app.on_event("startup")
 async def startup_event():

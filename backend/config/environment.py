@@ -31,45 +31,55 @@ def get_log_file() -> str:
     """Get the log file path."""
     return os.getenv("LOG_FILE", "logs/app.log")
 
-def display_configuration():
-    """Display the current configuration in the logs."""
-    config = {
-        "Environment": get_environment(),
-        "Debug Mode": get_debug(),
-        "MongoDB URL": get_mongodb_url(),
-        "MongoDB Database": get_mongodb_db_name(),
-        "CORS Origins": get_cors_origins(),
-        "Log File": get_log_file(),
-        "Log Level": os.getenv("LOG_LEVEL", "INFO"),
-        "API Version": os.getenv("API_V1_STR", "/api/v1"),
-        "Token Expiration (minutes)": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
-    }
-    
-    # System information
-    system_info = {
-        "Python Version": sys.version,
-        "Platform": sys.platform,
-        "Working Directory": os.getcwd(),
-        "Environment Files": {
-            "Base": str(Path(__file__).parent / ".env"),
-            "Current": str(Path(__file__).parent / f".env.{get_environment()}")
+def get_port() -> int:
+    """Get the server port."""
+    return int(os.getenv("PORT", "8001"))
+
+def get_configuration() -> dict:
+    return {
+        "application_info" : {
+            "Environment": get_environment(),
+            "Port": get_port(),
+            "Debug Mode": get_debug(),
+            "MongoDB URL": get_mongodb_url(),
+            "MongoDB Database": get_mongodb_db_name(),
+            "CORS Origins": get_cors_origins(),
+            "Log File": get_log_file(),
+            "Log Level": os.getenv("LOG_LEVEL", "INFO"),
+            "API Version": os.getenv("API_V1_STR", "/api/v1"),
+            "Token Exp. (min)": os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
+        },
+        "system_info" : {
+            "Python Version": sys.version, 
+            "Platform": sys.platform,
+            "Working Directory": os.getcwd(),
+            "Environment Files": {
+                    "Base": str(Path(__file__).parent / ".env"),
+                    "Current": str(Path(__file__).parent / f".env.{get_environment()}")
+                }
+        },
+        "log_info" : { 
+            "log_file": get_log_file(),
+            "log_exists": Path(get_log_file()).exists(),
+            "log_size": Path(get_log_file()).stat().st_size if Path(get_log_file()).exists() else 0
         }
     }
-    
-    logger.debug("Application Configuration:")
-    for key, value in config.items():
-        logger.debug(f" |_ {key}: {value}")
+
+def display_configuration():
+    """Display the current configuration in the logs."""
+    config_info = get_configuration()
+
+    logger.debug("Application Information:")
+    for key, value in config_info['application_info'].items():
+        logger.info(f"  - {key:20}: {value}")
     
     logger.debug("System Information:")
-    for key, value in system_info.items():
-        logger.debug(f" |_{key}: {value}")
+    for key, value in config_info['system_info'].items():
+        logger.debug(f"  - {key:20}: {value}")
     
-    # Log file information
-    log_file = get_log_file()
-    log_path = Path(log_file)
-    logger.debug(f" |_ Log file path: {log_path.absolute()}")
-    logger.debug(f" |_ Log file exists: {log_path.exists()}")
-    logger.debug(f" |_ Log file size: {log_path.stat().st_size if log_path.exists() else 0} bytes")
+    logger.debug("Logs Information:")
+    for key, value in config_info['log_info'].items():
+        logger.debug(f"  - {key:20}: {value}")
 
 def load_environment():
     """Load the appropriate environment file based on ACM_ENVIRONMENT."""
@@ -84,10 +94,9 @@ def load_environment():
         logger.info(f"Loaded environment configuration from {env_file}")
     else:
         logger.warning(f"Environment file {env_file} not found, using default configuration")
-    
-    # Then load the base .env file as fallback
-    base_env_path = Path(__file__).parent / ".env"
-    load_dotenv(base_env_path)
+        # Then load the base .env file as fallback
+        base_env_path = Path(__file__).parent / ".env"
+        load_dotenv(base_env_path)
     
     # Ensure ACM_ENVIRONMENT is set to development if not defined
     if not os.getenv("ACM_ENVIRONMENT"):
@@ -112,6 +121,7 @@ def load_environment():
     logger.addHandler(file_handler)
     
     # Display configuration after loading
+    logger.info("- LOAD ENVIRONMENT ------------------------------------------")
     display_configuration()
 
 # Load environment variables
